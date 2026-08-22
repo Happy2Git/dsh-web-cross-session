@@ -1,0 +1,12 @@
+# dsh-web-cross-session composition: enable the persisted FTS index for the
+# web sidebar's content search (the shipped base/web-app bundles pin
+# session-query-sqlite to openAt: never) and mount this plugin's dual-face
+# row. Patch semantics: an id override replaces the target row's whole
+# `config`, so every key of the base row is restated here.
+- id: session-query-sqlite
+  config:
+    path: !!js dshHomePath('session-query.db')
+    openAt: first-search
+- insert:
+    - id: cross-session
+      name: 'dsh-web-cross-session'
