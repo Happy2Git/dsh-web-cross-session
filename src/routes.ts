@@ -102,9 +102,14 @@ function gatedRoute(
     kind: 'exact',
     path,
     handler: async (req, res) => {
-      assertPostMethod(req);
       const signal = requestSignal(res);
-      await serve(res, async () => handle(await readJsonBody(req), signal), logInternal);
+      // The method gate runs inside serve's mapping so a wrong verb gets the
+      // JSON 405 shape; thrown outside, it would bubble to the webserver
+      // guard and come back as a bare 400.
+      await serve(res, async () => {
+        assertPostMethod(req);
+        return handle(await readJsonBody(req), signal);
+      }, logInternal);
     },
   }), `cross-session: ${path}`);
 }
