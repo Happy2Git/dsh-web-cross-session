@@ -26,6 +26,7 @@ import {
 } from '@deepseek-ai/dsh-session-reference'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { registerRoutes } from './routes.ts'
+import { scheduleIndexWarmup } from './warmup.ts'
 import type { CrossSessionDeps } from './routes-core.ts'
 
 export const name = 'cross-session'
@@ -45,6 +46,14 @@ export interface Config {
    * the session-query tools.
    */
   readonly inlineSnapshot?: boolean
+  /**
+   * Milliseconds to wait after mount before the one-shot index warmup fires
+   * (a throwaway query whose only effect is building the FTS index in the
+   * background, so a fresh deployment's first real search is already hot).
+   * The build costs ~30s per hundred persisted sessions once; set a very
+   * large value to defer it indefinitely.
+   */
+  readonly warmupDelayMs?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -53,6 +62,7 @@ export const Config: z<Config> = z.object({
   candidateLimit: z.number().step(1).min(1).default(50),
   maxReferenceBytes: z.number().step(1).min(1).default(65_536),
   inlineSnapshot: z.boolean().default(false),
+  warmupDelayMs: z.number().step(1).min(0).default(10_000),
 })
 
 export const inject = ['agents', 'sessions', 'sessionQuery'] as const
@@ -125,6 +135,10 @@ export function apply(ctx: Context, config: Config): void {
     }
     httpCtx.effect(() => registerRoutes(httpCtx, deps), 'cross-session: /xssn/* routes')
   })
+
+  // 3.5. Background index warmup: moves the one-time first-search build off
+  //      the user's first real search. Dies with the plugin fiber.
+  ctx.effect(() => scheduleIndexWarmup(ctx, config.warmupDelayMs ?? 10_000), 'cross-session: index warmup')
 
   // 4. /xsend: forward a message into another live session without waking it.
   ctx.inject(['commands'], (cmdCtx) => {
