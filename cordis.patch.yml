@@ -1,12 +1,17 @@
 # dsh-web-cross-session composition: enable the persisted FTS index for the
 # web sidebar's content search (the shipped base/web-app bundles pin
 # session-query-sqlite to openAt: never) and mount this plugin's dual-face
-# row. Patch semantics: an id override replaces the target row's whole
+# row. The trigram tokenizer makes CJK terms match as substrings — unicode61
+# folds an entire space-free Chinese sentence into one token, so short
+# Chinese queries never hit. Switching tokenizers rebuilds the derived index
+# from the logs once, on the first search after upgrading.
+# Patch semantics: an id override replaces the target row's whole
 # `config`, so every key of the base row is restated here.
 - id: session-query-sqlite
   config:
     path: !!js dshHomePath('session-query.db')
     openAt: first-search
+    tokenize: trigram
 - insert:
     - id: cross-session
       name: 'dsh-web-cross-session'

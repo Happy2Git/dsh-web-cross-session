@@ -60,6 +60,7 @@ describe('cordis.patch.yml', () => {
     expect(override?.config).toEqual({
       path: '/home/u/.dsh/session-query.db',
       openAt: 'first-search',
+      tokenize: 'trigram',
     })
   })
 
@@ -77,6 +78,7 @@ describe('cordis.patch.yml', () => {
     expect(row?.config).toEqual({
       path: '/home/u/.dsh/session-query.db',
       openAt: 'first-search',
+      tokenize: 'trigram',
     })
     expect(entries.some(entry => entry.id === 'cross-session' && entry.name === 'dsh-web-cross-session')).toBe(true)
   })
