@@ -6,7 +6,7 @@ DSH Web UI 的跨会话能力插件：在**两个普通会话之间**引用、�
 
 | 能力 | 触发方式 | 机制 |
 |---|---|---|
-| 侧边栏内容搜索 | Web 侧边栏搜索框直接搜消息正文 | 覆盖 `session-query-sqlite` 行为 `openAt: first-search`，解锁已有的 `session.search` RPC 与 WorkspaceBrowser |
+| 侧边栏内容搜索 | Web 侧边栏搜索框直接搜消息正文 | 覆盖 `session-query-sqlite` 行为 `openAt: first-search`；核心 `session.search` 返回每条命中的 `seq`，点击结果会**跳转并高亮**到匹配消息（tool 命中同样可搜可定位） |
 | composer `@` 引用会话 | 输入框打 `@`，从会话候选中选择 | 复用 `dsh-session-reference` 服务的快照投影，提交时把带 untrusted 警告的快照插入消息 |
 | `/xsend <text>` 选择器转发 | 输入 `/xsend <文本>` 回车 → 弹出目标会话选择器（live 会话列表） | `agent.inject()` 非唤醒注入；`/xsend <sessionId> <text>` 直发形式仍可用 |
 | 模型会话查询工具 | 模型自行调用 | 挂载 `dsh-tool-session-query` 的五个工具（`session_search` 等），config 可关 |
@@ -32,6 +32,8 @@ npx -y @deepseek-ai/dsh --profile web
 **全新部署的第一次搜索需要为全部历史会话构建一次 FTS 索引**（约百会话 ≈ 半分钟，千会话级更久），仅此一次——索引持久化在 `$DSH_HOME/session-query.db`，之后每次启动只做增量核对，搜索稳定在亚秒级。插件默认在启动 10 秒后自动于后台完成这次构建（`warmupDelayMs` 可调），多数情况下你的第一次搜索已经是热的；若在后台构建完成前就搜索，该次请求会等待构建结束，请保持页面打开——中途刷新或退出会回滚未完成的构建，下次从头再来。
 
 **中文搜索**：插件把核心 `session-query-sqlite` 的 `tokenize` 覆盖为 `trigram`，任意长度的中文子串都能命中——"搜索"可以命中"会话搜索功能"，无需词组空格。该键是核心 `SqliteSessionQueryEngine` 提供的配置（默认 `unicode61`），需要宿主核心版本带 `tokenize` 支持；旧版核心不认识该键时插件会以默认分词器继续运行（中文子串限制仍在）。切换分词器会重建一次派生索引（与首次构建同价，仅一次）。
+
+搜索**按调用方工作区过滤**：核心 `session.search` 只返回与当前工作区 cwd 精确相等的会话（外加自身）。跨工作区的命中连 snippet 正文都不会下发。
 
 ### 2. composer `@` 引用会话
 
@@ -101,8 +103,11 @@ cordis.patch.yml         组合层：覆盖 session-query-sqlite（openAt）+ in
 src/index.ts             host 半：装配 SessionReferenceResolver、条件装配模型工具、
                          /xsend 命令、绑定路由依赖
 src/routes.ts            /xssn/* HTTP 接线（loopback 守卫 + JSON 围栏 + 错误映射）
-src/routes-core.ts       纯逻辑（依赖注入，可单测）：candidates / prepare / send
-src/client/index.ts      浏览器半：@ sessions trigger + ReferenceCodec（提交时快照化）
+src/routes-core.ts       纯逻辑（依赖注入，可单测）：candidates / prepare /
+                         serialize / send
+src/client/index.ts      浏览器半：@ sessions trigger + /xsend 触发器
+                         + ReferenceCodec（提交时快照化）
+src/client/picker.tsx    二级 picker overlay（@ 主会话 + 子代理 / /xsend 目标）
 ```
 
 设计要点（对应 dsh 的 cordis 哲学）：

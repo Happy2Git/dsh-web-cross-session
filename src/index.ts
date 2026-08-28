@@ -5,7 +5,8 @@
  *  1. the session-reference resolver service (own lifecycle, configurable),
  *  2. the model-facing session-query tools (session_search & friends),
  *     config-gated so a deployment can keep the shipped tools-off default,
- *  3. the /xssn/* routes the browser half speaks (candidates, prepare, send),
+ *  3. the /xssn/* routes the browser half speaks (candidates, prepare,
+ *     serialize, send),
  *  4. the /xsend command: forward a message into another live session.
  *
  * The composition patch (cordis.patch.yml) enables the persisted FTS index
@@ -177,15 +178,31 @@ type CorpusObservation = Awaited<ReturnType<CrossSessionDeps['corpus']>>
  * Wrap one corpus loader behind a short TTL cache. A cache hit ignores the
  * fresh signal — the window is bounded and the corpus is advisory data
  * (parent links, workspace labels), never message content.
+ *
+ * In-flight requests share one load. Without that, a burst arriving before the
+ * first listing resolves would each miss the not-yet-written cache and start
+ * their own full-corpus listing — the exact case a cold first search hits,
+ * where the listing is slowest and the pile-up hurts most.
+ *
+ * A failed load is not cached: the rejection is handed to every waiter and the
+ * next call retries, so one transient listing error cannot poison the window.
  */
-function cachedCorpus(load: (signal: AbortSignal) => Promise<CorpusObservation>): CrossSessionDeps['corpus'] {
+export function cachedCorpus(load: (signal: AbortSignal) => Promise<CorpusObservation>): CrossSessionDeps['corpus'] {
   let cache: { at: number; value: CorpusObservation } | undefined
+  let inFlight: Promise<CorpusObservation> | undefined
   return (signal) => {
     if (cache !== undefined && Date.now() - cache.at < CORPUS_TTL_MS) return Promise.resolve(cache.value)
-    return load(signal).then((value) => {
+    if (inFlight !== undefined) return inFlight
+    const pending = load(signal).then((value) => {
       cache = { at: Date.now(), value }
       return value
     })
+    inFlight = pending
+    // Clear the slot on both outcomes; `finally` keeps the rejection intact
+    // for the waiters that share this promise.
+    const settle = (): void => { if (inFlight === pending) inFlight = undefined }
+    pending.then(settle, settle)
+    return pending
   }
 }
 

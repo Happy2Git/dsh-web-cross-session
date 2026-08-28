@@ -40,6 +40,8 @@ function makeCtx(): {
   registered: InputTriggerSource[]
   bails: { event: string; payload: unknown }[]
   scopes: Map<string, unknown>
+  located: { sessionId: string; seq: number }[]
+  opened: string[]
 } {
   const registered: InputTriggerSource[] = []
   const bails: { event: string; payload: unknown }[] = []
@@ -57,9 +59,18 @@ function makeCtx(): {
     },
   }
   const scopes = new Map<string, unknown>([['session-1', scope]])
+  const located: { sessionId: string; seq: number }[] = []
+  const opened: string[] = []
   const sessions = {
-    scope: (sessionId: string) => scopes.get(sessionId),
+    scope: (sessionId: string) => scopes.get(sessionId) ?? {
+      sessionId,
+      // Mirrors the real scope-addressed service lookup the wiring performs.
+      get: (name: string) => (name === 'conversation'
+        ? { locate: (seq: number) => { located.push({ sessionId, seq }) } }
+        : undefined),
+    },
     scopeOf: (actx: unknown) => (actx as { sessionId?: string } | undefined)?.sessionId,
+    open: (sessionId: string) => { opened.push(sessionId) },
     list: {
       getSnapshot: () => ({
         byId: {
@@ -91,7 +102,7 @@ function makeCtx(): {
       return true
     },
   }
-  return { ctx, registered, bails, scopes }
+  return { ctx, registered, bails, scopes, located, opened }
 }
 
 /** The projection the pipeline hands to callbacks. */

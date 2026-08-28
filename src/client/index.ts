@@ -16,6 +16,9 @@
  * between the untrusted inline snapshot and the short pointer form (pointer
  * by default, resolved by the model with the session-query tools).
  *
+ * Cross-session fragment search lives in the core sidebar search (session.search
+ * + the conversation locate reveal); this plugin no longer ships its own panel.
+ *
  * @module dsh-web-cross-session/client
  */
 
@@ -95,6 +98,7 @@ interface CandidateEntry {
 interface ClientSessionsFacet {
   scope(sessionId: string): ClientContext | undefined
   scopeOf(ctx: ClientContext): string | undefined
+  open(sessionId: string): void
   list: {
     getSnapshot(): { byId: Record<string, { id: string; displayTitle?: string; parentId?: string }> }
   }
