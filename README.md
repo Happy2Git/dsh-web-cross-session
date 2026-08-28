@@ -120,13 +120,13 @@ src/client/picker.tsx    二级 picker overlay（@ 主会话 + 子代理 / /xsen
 ## 开发
 
 ```sh
-pnpm install     # devDependencies 全部来自 npm registry，无机器本地路径依赖
-pnpm typecheck   # tsc --noEmit（类型来自 ../deepseek-harness 副本的 lib/types）
+pnpm install     # devDependencies 中公开可装的依赖；宿主类型包见下文
+pnpm typecheck   # tsc --noEmit（类型来自 ../deepseek-harness 的 lib/types，见下文）
 pnpm build       # tsdown：lib/index.js（node ESM）+ lib/client.js（浏览器 closure factory）
 pnpm test        # vitest：路由逻辑单测 + patch 组合测试 + 浏览器 jsdom 测试
 ```
 
-独立重建：clone 本目录后 `pnpm install && pnpm run typecheck` 即可通过——运行时依赖由宿主 dsh 提供（peerDependencies，`@deepseek-ai/dsh-tool-session-query` 为 optional peer），开发期类型检查用 registry 版本的 devDependencies；`../deepseek-harness` 符号链接只为 tsconfig paths 服务，缺失时 typecheck 降级为依赖 devDeps 的声明。挂载时若 `dsh-tool-session-query` 不在依赖闭包内，host 半会 warn 并继续提供引用/搜索/转发（warn 里带补救指引），`mountModelTools: false` 可消除告警。
+**类型依赖**：插件的类型检查引用宿主 `@deepseek-ai/*` 包的类型（`dsh-agent`、`dsh-session`、`dsh-session-query`、`dsh-client-runtime`、`dsh-client-ui-input-trigger` 等），这些包的部分传递依赖（如 `dsh-compact`）不在公共 registry，因此完整 `pnpm typecheck` 需要一份宿主类型来源——`tsconfig.json` 的 `paths` 指向相邻的 `../deepseek-harness` 仓库副本（开发机的标准布局）；没有它时 typecheck 会因类型模块缺失而失败，但**构建与运行不受影响**（运行时依赖由宿主 dsh 在挂载时提供，见 peerDependencies；`lib/` 产物是自包含的）。挂载时若 `dsh-tool-session-query` 不在依赖闭包内，host 半会 warn 并继续提供引用/搜索/转发（warn 里带补救指引），`mountModelTools: false` 可消除告警。
 
 测试覆盖：candidates 的工作区授权（跨区剔除、无 cwd caller 仅见自身）、与顺序无关的两级装配（child 先于 parent、父/子成环均不丢行）、id 字母表门卫、`sanitizeLabel` 清洗；prepare/serialize 的指针 vs 快照判定与委托；send 的双 live 校验、自转发拒绝、字节上限；error 映射对未知异常的脱敏；`cordis.patch.yml` 组合测试；浏览器 trigger 的候选映射、复合 ref 编解码往返、每个 chip 绑定各自 composer、无法识别 ref 阻断发送、serialize 成功/失败路径。
 
